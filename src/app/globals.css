@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-rgb: 0, 0, 0;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: rgb(var(--background-rgb));
+  color: rgb(var(--foreground-rgb));
+}
+
+#__next {
+  width: 100%;
+  height: 100%;
+}
+
+/* Fullscreen canvas container */
+.canvas-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+}
+
+/* Overlay elements */
+.overlay {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.overlay-interactive {
+  pointer-events: auto;
+}
+
+/* Smooth text rendering */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hide scrollbars */
+::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

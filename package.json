@@ -1,0 +1,34 @@
+{
+  "name": "song-portrait",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real-time generative visual experience that translates Spotify tracks into living shader animations",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@react-three/drei": "^9.88.0",
+    "@react-three/fiber": "^8.15.0",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.183.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/three": "^0.183.1",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "^14.0.0",
+    "postcss": "^8.5.8",
+    "raw-loader": "^4.0.2",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.0.0"
+  }
+}
