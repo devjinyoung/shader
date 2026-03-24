@@ -3,10 +3,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
+import { usePlayback } from '@/context/PlaybackContext';
 import { VisualParams, defaultVisualParams } from '@/types/visualParams';
 import { TrackData } from '@/types/spotify';
 import { ParameterControls } from '@/components/ParameterControls';
 import { TrackInput } from '@/components/TrackInput';
+import { PlayerControls } from '@/components/PlayerControls';
 
 // Dynamic import to avoid SSR issues with Three.js
 const Visualizer = dynamic(
@@ -16,6 +18,7 @@ const Visualizer = dynamic(
 
 export default function Home() {
   const { isAuthenticated, isLoading: authLoading, login, logout } = useAuth();
+  const { onBeat, isPremium, loadAndPlay, currentTrack } = usePlayback();
   const [params, setParams] = useState<VisualParams>(defaultVisualParams);
   const [beatPulse, setBeatPulse] = useState(0);
   const [showControls, setShowControls] = useState(true);
@@ -35,7 +38,14 @@ export default function Home() {
     setBeatPulse(1);
   }, []);
 
-  // Keyboard shortcuts
+  // Subscribe to automatic beat events from playback context (Premium users)
+  useEffect(() => {
+    if (isPremium && currentTrack) {
+      return onBeat(triggerBeat);
+    }
+  }, [isPremium, currentTrack, onBeat, triggerBeat]);
+
+  // Keyboard shortcuts (manual beat for non-Premium or testing)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -51,12 +61,17 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [triggerBeat]);
 
-  const handleTrackLoaded = useCallback((data: TrackData) => {
-    setTrackData(data);
-    console.log('Track loaded:', data.track.name);
-    console.log('Audio features:', data.features);
-    console.log('Beats:', data.analysis.beats.length);
-  }, []);
+  const handleTrackLoaded = useCallback(
+    async (data: TrackData) => {
+      setTrackData(data);
+      console.log('Track loaded:', data.track.name);
+      console.log('Audio features:', data.features);
+
+      // Load and start playback via PlaybackContext
+      await loadAndPlay(data);
+    },
+    [loadAndPlay]
+  );
 
   // Show loading state
   if (authLoading) {
@@ -153,6 +168,9 @@ export default function Home() {
         onBeat={triggerBeat}
         visible={showControls && !!trackData}
       />
+
+      {/* Player Controls */}
+      {trackData && <PlayerControls />}
 
       {/* Instructions */}
       {trackData && (
