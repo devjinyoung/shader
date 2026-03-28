@@ -2,29 +2,27 @@ precision highp float;
 
 varying vec2 vUv;
 
-// Uniforms - parameters that drive the visualization
+// Core uniforms
 uniform float uTime;
-uniform float uBeatPulse;      // 0-1, spikes on beat then decays
+uniform float uBeatPulse;        // 0-1, decays from beat trigger
 uniform vec2 uResolution;
 
-// Visual parameters (will come from Claude)
-uniform float uHueAnchor;      // 0-360
-uniform float uHueSpread;      // 0-180
-uniform float uSaturation;     // 0-1
-uniform float uBrightness;     // 0-1
-uniform float uSymmetryOrder;  // 2-8
-uniform float uBaseRadius;     // 0.2-0.6
-uniform float uOrganicComplexity; // 1-5
-uniform float uChaosLevel;     // 0-1
-uniform float uBreathingSpeed; // 0.2-2
-uniform float uPulseIntensity; // 0-1
-uniform float uGlowIntensity;  // 0-1
-uniform float uEdgeSoftness;   // 0-1
+// Texture
+uniform sampler2D uTexture;
+uniform float uTextureAspect;    // Image width/height ratio
+
+// Effect parameters
+uniform float uBreathingSpeed;   // 0.2-2
+uniform float uPulseIntensity;   // 0-1
+uniform float uOrganicComplexity;// 1-5 (noise octaves)
+uniform float uChaosLevel;       // 0-1
+uniform float uMorphIntensity;   // 0-0.1
+uniform float uRippleSpeed;      // 1-5
+uniform float uScaleBreathAmount;// 0-0.15
 
 #define PI 3.14159265359
-#define TAU 6.28318530718
 
-// Include noise functions
+// Simplex noise functions (kept from original)
 vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
 
 float snoise(vec2 v) {
@@ -64,85 +62,100 @@ float fbm(vec2 p, int octaves) {
   return value;
 }
 
-// HSL to RGB conversion
-vec3 hsl2rgb(vec3 c) {
-  vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
-  return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+// Aspect ratio correction - fit image to screen
+vec2 correctAspectRatio(vec2 uv, float screenAspect, float imageAspect) {
+  vec2 corrected = uv;
+
+  // Center the UVs
+  corrected -= 0.5;
+
+  float aspectRatio = screenAspect / imageAspect;
+
+  if (aspectRatio > 1.0) {
+    // Screen is wider than image - fit height, crop width
+    corrected.x *= aspectRatio;
+  } else {
+    // Screen is taller than image - fit width, crop height
+    corrected.y /= aspectRatio;
+  }
+
+  // Return to 0-1 range
+  corrected += 0.5;
+
+  return corrected;
+}
+
+// Beat-reactive shape morphing via angular distortion
+vec2 applyShapeMorph(vec2 uv, float time, float beatPulse, float breathSpeed, float pulseIntensity, int octaves) {
+  vec2 centered = uv - 0.5;
+  float dist = length(centered);
+  float angle = atan(centered.y, centered.x);
+
+  // Continuous subtle wobble
+  float wobble = sin(angle * 3.0 + time * breathSpeed) * 0.02;
+
+  // Beat-reactive angular distortion - warps the shape on beat
+  float beatWarp = sin(angle * 5.0 + time * 2.0) * beatPulse * pulseIntensity * 0.08;
+
+  // Beat-reactive radial noise distortion
+  float noise = fbm(vec2(angle * 2.0, dist * 3.0) + time * 0.3, octaves);
+  float beatNoise = noise * beatPulse * pulseIntensity * 0.15;
+
+  // Combine distortions
+  float totalDistort = wobble + beatWarp + beatNoise;
+
+  // Apply distortion to radius
+  float newDist = dist + totalDistort * dist;
+
+  // Reconstruct UV
+  vec2 morphed = vec2(cos(angle), sin(angle)) * newDist;
+
+  return morphed + 0.5;
+}
+
+// Organic noise morphing
+vec2 applyNoiseMorph(vec2 uv, float time, int octaves, float chaosLevel, float morphIntensity) {
+  // Sample noise at UV position
+  float noiseX = fbm(uv * 3.0 + time * 0.2, octaves);
+  float noiseY = fbm(uv * 3.0 + vec2(100.0, 0.0) + time * 0.2, octaves);
+
+  // Create offset from noise
+  vec2 offset = vec2(noiseX, noiseY) * morphIntensity * chaosLevel;
+
+  return uv + offset;
 }
 
 void main() {
-  // Normalize coordinates to [-1, 1] with aspect ratio correction
-  vec2 uv = vUv * 2.0 - 1.0;
-  float aspect = uResolution.x / uResolution.y;
-  uv.x *= aspect;
+  // Screen aspect ratio
+  float screenAspect = uResolution.x / uResolution.y;
 
-  // Convert to polar coordinates
-  float dist = length(uv);
-  float angle = atan(uv.y, uv.x);
+  // Start with raw UVs
+  vec2 uv = vUv;
 
-  // Apply radial symmetry
-  float symmetry = max(2.0, floor(uSymmetryOrder));
-  float symmetryAngle = TAU / symmetry;
-  float foldedAngle = mod(angle + PI, symmetryAngle) - symmetryAngle * 0.5;
+  // 1. Aspect ratio correction (fit image to screen)
+  uv = correctAspectRatio(uv, screenAspect, uTextureAspect);
 
-  // Reconstruct position with symmetry
-  vec2 symUv = vec2(cos(foldedAngle), sin(foldedAngle)) * dist;
-
-  // Breathing animation
-  float breath = sin(uTime * uBreathingSpeed) * 0.5 + 0.5;
-  float breathScale = 1.0 + breath * 0.1;
-
-  // Beat pulse - radial shockwave
-  float beatWave = uBeatPulse * uPulseIntensity;
-  float shockwave = smoothstep(0.0, 0.3, beatWave) * (1.0 - smoothstep(0.0, 0.5, dist - beatWave * 0.5));
-
-  // Organic distortion using noise
+  // 2. Apply beat-reactive shape morphing
   int octaves = int(uOrganicComplexity);
-  float noiseScale = 2.0 + uChaosLevel * 3.0;
-  float noiseTime = uTime * 0.3;
+  uv = applyShapeMorph(uv, uTime, uBeatPulse, uBreathingSpeed, uPulseIntensity, octaves);
 
-  float distortion = fbm(symUv * noiseScale + noiseTime, octaves);
-  distortion *= uChaosLevel * 0.3;
+  // 3. Apply additional organic noise morphing (continuous)
+  uv = applyNoiseMorph(uv, uTime, octaves, uChaosLevel, uMorphIntensity);
 
-  // Apply distortion to distance
-  float distortedDist = dist + distortion + shockwave * 0.1;
+  // 5. Sample texture
+  vec4 texColor = texture2D(uTexture, uv);
 
-  // Base radius with breathing
-  float radius = uBaseRadius * breathScale;
+  // 6. Handle out-of-bounds UVs (fade to black at edges)
+  float edgeFade = 1.0;
+  vec2 edgeDist = max(vec2(0.0), max(-uv, uv - 1.0));
+  edgeFade = 1.0 - smoothstep(0.0, 0.15, length(edgeDist));
 
-  // Soft SDF circle
-  float softness = 0.1 + uEdgeSoftness * 0.3;
-  float sdf = smoothstep(radius + softness, radius - softness * 0.5, distortedDist);
+  // 7. Beat brightness boost
+  float beatBrightness = 1.0 + uBeatPulse * uPulseIntensity * 0.4;
 
-  // Glow effect - outer halo
-  float glow = exp(-distortedDist * (3.0 - uGlowIntensity * 2.0)) * uGlowIntensity;
+  // Final color
+  vec3 finalColor = texColor.rgb * beatBrightness * edgeFade;
+  float alpha = texColor.a * edgeFade;
 
-  // Color - spectral gradient based on angle and distance
-  float hueBase = uHueAnchor / 360.0;
-  float hueOffset = (foldedAngle / PI) * (uHueSpread / 360.0);
-  float hueDistOffset = (1.0 - distortedDist) * 0.1;
-  float hue = fract(hueBase + hueOffset + hueDistOffset + uTime * 0.02);
-
-  // Add noise to hue for organic color variation
-  float hueNoise = snoise(symUv * 3.0 + uTime * 0.1) * 0.05;
-  hue = fract(hue + hueNoise);
-
-  // Saturation varies with distance from center
-  float sat = uSaturation * (0.7 + distortedDist * 0.3);
-
-  // Lightness - brighter at center, glow at edges
-  float light = uBrightness * (sdf * 0.8 + glow * 0.5);
-
-  // Beat pulse brightens the core
-  light += shockwave * 0.3;
-
-  vec3 color = hsl2rgb(vec3(hue, sat, light));
-
-  // Add inner glow / luminosity
-  color += vec3(glow * 0.3) * hsl2rgb(vec3(hue, 0.5, 0.5));
-
-  // Final alpha - organism visibility
-  float alpha = sdf + glow;
-
-  gl_FragColor = vec4(color, alpha);
+  gl_FragColor = vec4(finalColor, alpha);
 }

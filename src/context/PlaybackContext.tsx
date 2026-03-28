@@ -65,6 +65,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         beats,
         onBeat: handleBeat,
         getPositionMs: player.getPosition,
+        lookaheadMs: 50, // Fire early to compensate for React render latency
       });
     }
   }, [beats, player.isReady, player.getPosition, handleBeat]);
